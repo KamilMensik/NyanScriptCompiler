@@ -1,0 +1,9 @@
+.DATA
+const int ahoj 12
+
+.END
+
+//int test, 1
+//byte track, 1
+//c player, int x
+1 1 :+ 5 :+ 3 :+

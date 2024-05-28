@@ -1,55 +1,38 @@
-; Compiles target file and converts it to NyanScript 2.0 binary
-(setf *default-pathname-defaults* #p"C:/Users/kamil/Desktop/NSM/NyanScriptCompiler/")
+;; Compiles target file and converts it to NyanScript 2.0 binary
 
-; All token types
-;  '(:number
-;    :identifier
-;    :divider
-;    :function
-;    :user-function
-;    :region
-;    :endline))
+;; All token types
+;;  '(:number
+;;    :identifier
+;;    :divider
+;;    :function
+;;    :user-function
+;;    :region
+;;    :endline)
+
+;; Data types
+;; BYTE - 1 byte number
+;; INT - 2 byte number
+
+;; PREREQUISITE LOAD
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  ;(setf *default-pathname-defaults* #p"C:/Users/kamil/Desktop/NSM/NyanScriptCompiler/")
+  (setf *default-pathname-defaults* #p"~/NyanScriptCompiler/")
+  (load (compile-file "prerequisites.lisp"))
+  (load (compile-file "tokens.lisp"))
+  (load (compile-file "type_checking.lisp"))
+  (prerequisite-setup))
 
 
-(defun symbol-char-p (c)
-  (and (char>= c #\!) (char<= c #\`)))
-
-(defvar *supported-types* (make-hash-table))
-(setf (gethash :number *supported-types*) (list 'parse-integer #'digit-char-p))
-(setf (gethash :function *supported-types*) (list 'read-from-string #'symbol-char-p))
-(setf (gethash :region *supported-types*) (list 'intern #'alpha-char-p))
-(setf (gethash :identifier *supported-types*) (list 'intern #'alpha-char-p))
-
-;Edit this to add more functions
+;;Edit this to add more functions
 (defvar *functions-list*
   '(:skip
     :lnum
     :+))
 
-(defvar *functions-table* (make-hash-table))
-
 (defun populate-functions-table (list &optional (i 0))
   (if (endp list) nil
     (progn (setf (gethash (car list) *functions-table*) i)
-      (populate-functions-table (cdr list) (1+ i)))))
-
-(defun gen-token (string type)
-  `(token ,string ,type))
-
-(defun token-value (token)
-  (second token))
-
-(defun token-type (token)
-  (third token))
-
-(defun regionp (token)
-  (eql (token-type token) :region))
-
-(defmacro build-token (type)
-  (let ((info (gethash type *supported-types*)))  
-    `(let ((token-end (get-token-end line (1+ i) len ,(cadr info))))
-       (cons (gen-token (,(car info) (subseq line i token-end)) ,type)
-             (handle-line line len token-end)))))
+	   (populate-functions-table (cdr list) (1+ i)))))
 
 (defun get-token-end (line j len cond)
   (if (>= j len) j
@@ -76,44 +59,14 @@
     (if line (append (handle-line (string-upcase line) (length line)) (tokenize file))
       nil)))
 
-(defun handle-identifier (token)
-  (case (token-value token)
-    (('+) (print "+ ty smejde lol")))
-    (identity token))
-
-(defun handle-function (token)
-  (let ((function-code (gethash (token-value token) *functions-table*)))
-    (labels ((convert-to-binary (n)
-               (if (= n 0) ""
-                 (let ((code function-code))
-                   (setf function-code (floor function-code 2))
-                   (format nil "~A~A" (convert-to-binary (1- n)) (mod code 2))))))
-      (list (format nil "0b~A" (convert-to-binary 8))))))
-                 
-
-(defun handle-number (token)
-  (let ((number (token-value token)))
-    (labels ((convert-to-binary (n)
-               (if (= n 0) ""
-                 (let ((num number))
-                   (setf number (floor number 2))
-                   (format nil "~A~A" (convert-to-binary (1- n)) (mod num 2))))))
-      (let ((lower-byte (format nil "0b~A" (convert-to-binary 8)))) 
-      (list (format nil "0b~A" (convert-to-binary 8)) lower-byte "0b00000001")))))
-
-(defun convert-to-binary (tokens)
-  (if (endp tokens) nil
-    (let ((token (car tokens)))
-      (append (case (token-type (car tokens))
-              ((:function) (handle-function token))
-              ((:number) (handle-number token)))
-              (convert-to-binary (cdr tokens))))))
-
 ;TODO ADD TYPE CHECKING WHEN CREATING CONSTANTS AND VARIABLES!
 
 ;data parameter format (const type name value)
 (defun valid-data-formatp (data)
   (and (cadr data) (caddr data) (cadddr data)))
+
+(defun valid-value-typep (token-type type)
+  (eql (gethash type *data-types*) token-type))
 
 (defun handle-data-region (token data)
   (let ((token-type (token-type token))
@@ -126,39 +79,58 @@
       (if (eql token-value 'const) (if (or constant type) (error "Invalid const detected in data region")
                                      '(t))
         (if type (if name (if value (error (format nil "Invalid data format for variable: ~A" name)) 
-                            (list constant type name token-value))
+                              (if (valid-value-typep token-type type) (list constant type name token-value)
+				  (error (format nil "Error: ~A is not of type ~A" token-value type))))
                    (list constant type (if (not (eql token-type :identifier)) (error "Invalid data region syntax") token-value)))
           (list constant (if (not (eql token-type :identifier)) (error "Invalid data region syntax") token-value)))))))
 
-(defun parse-tokens (tokens)
-  (let ((constants (make-hash-table))
-        (testing)
-        (result))
+(defun parse-number-token (token output-file)
+  (let ((token-value (token-value token)))
+    (write-byte (static-typing '(token :lnum :function)) output-file)
+    (write-byte (floor token-value 256) output-file)
+    (write-byte (mod token-value 256) output-file)))
+
+(defun parse-function-token (token output-file)
+  (let ((res (static-typing token)))
+    (if res (write-byte res output-file)
+	(error (format nil "Unknown function: ~A" (token-value token))))))
+
+(defun parse-identifier-token (token output-file constants)
+  (let ((res (gethash (token-value token) constants)))
+    (if res (case (gethash (token-type res) *data-types*)
+	      (:number (parse-number-token res output-file)))
+	(error (format nil "Unknown identifier: ~A" (token-value token))))))
+
+(defun parse-tokens (tokens output-file)
+  (let ((constants (make-hash-table)))
     (labels ((parse (tokens &optional (region nil) (additional-data))
                (let ((token (car tokens)))
                  (cond ((null token) nil)
                        (region (if (regionp token) (if (not (eql (token-value token) '.end)) (error (format nil "Unexpected region. Previous region: ~A hasnt been properly closed" region))
-                                                       (parse (cdr tokens)))
+                                                       (parse (cdr tokens) nil))
                                    (case region
                                      ('.data (let ((result (handle-data-region token additional-data)))
-                                                (if (eql result :completed) (progn (push (cdr additional-data) testing)
-                                                                              (if (car additional-data) (setf (gethash (caddr additional-data) constants) (list (cadr additional-data) (cadddr additional-data)))
-                                                                                (error "Not yet implemented"))
-                                                                              (parse (cdr tokens) region))
-                                                  (parse (cdr tokens) region result))))
+                                               (if (eql result :completed) (progn (if (car additional-data) (setf (gethash (caddr additional-data) constants) (gen-token (cadddr additional-data) (cadr additional-data)))
+                                                                                      (error "Not yet implemented"))
+										  (parse (cdr tokens) region))
+                                                   (parse (cdr tokens) region result))))
                                      (otherwise (error (format nil "Invalid region name: ~A" region))))))
                        (t (case (token-type token)
-                            ((:region) (parse (cdr tokens) (token-value token)))))))))
-      (parse tokens)
-      (print testing))))
-                                       
+                            (:region (parse (cdr tokens) (token-value token)))
+			    (:number (parse-number-token token output-file) (parse (cdr tokens)))
+			    (:identifier (parse-identifier-token token output-file constants) (parse (cdr tokens)))
+			    (:function (parse-function-token token output-file) (parse (cdr tokens)))
+			    (otherwise (parse (cdr tokens)))))))))
+      (parse tokens))))
+
 (defun compile-script ()
   (populate-functions-table *functions-list*)
+  (setf *rslt* nil)
   (format t "Enter filename: ")
-  (let* ((fileName (read))
+  (let* ((fileName (read-line))
          (f (open (format nil "~A.nya" fileName)))
-         (fo (open (format nil "~A.txt" fileName) :direction :output :if-exists :supersede :if-does-not-exist :create)))
+         (fo (open (format nil "~A.bin" fileName) :direction :output :if-exists :supersede :if-does-not-exist :create :element-type '(unsigned-byte 8))))
     (let ((tokens (tokenize f)))
+      (parse-tokens tokens fo)
       (close f)
-      (close fo)
-      (parse-tokens tokens))))
+      (close fo))))

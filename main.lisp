@@ -36,7 +36,7 @@
 
 (defun get-token-end (line j len cond)
   (if (>= j len) j
-    (let ((c (aref line j)))
+      (let ((c (aref line j)))
       (cond
        ((or (eql c #\Space) (eql c #\,)) j)
        ((funcall cond c) (get-token-end line (1+ j) len cond))

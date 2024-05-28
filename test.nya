@@ -3,4 +3,5 @@ const int ahoj 12
 
 .END
 
-ahoj ahoj :+	
+ahoj ahoj :+ :+
+

@@ -2,7 +2,6 @@
   (defun symbol-char-p (c)
     (and (char>= c #\!) (char<= c #\`)))
   (defvar *supported-types* (make-hash-table))
-  (defvar *functions-table* (make-hash-table))
   (defvar *data-types* (make-hash-table)))
 
 (defun prerequisite-setup ()

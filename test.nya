@@ -3,5 +3,5 @@ const int ahoj 12
 
 .END
 
-ahoj ahoj :+ :+
+0 :if ahoj ahoj :+ :print :else 255 :print :then :end
 

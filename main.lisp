@@ -15,8 +15,8 @@
 
 ;; PREREQUISITE LOAD
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  ;(setf *default-pathname-defaults* #p"C:/Users/kamil/Desktop/NSM/NyanScriptCompiler/")
-  (setf *default-pathname-defaults* #p"~/NyanScriptCompiler/")
+  (setf *default-pathname-defaults* #p"C:/Users/kamil/Desktop/NSM/NyanScriptCompiler/")
+  ;(setf *default-pathname-defaults* #p"~/NyanScriptCompiler/")
   (load (compile-file "prerequisites.lisp"))
   (prerequisite-setup)
   (load (compile-file "tokens.lisp"))
@@ -46,6 +46,7 @@
 
 (defun compile-script ()
   (setf *rslt* nil)
+  (setf *if-branch* nil)
   (format t "Enter filename: ")
   (let* ((fileName (read-line))
          (f (open (format nil "~A.nya" fileName)))
